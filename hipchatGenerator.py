@@ -1,8 +1,10 @@
 import json
+import string
 import random
 from uuid import uuid4
 from time import time
 from os import mkdir
+from shutil import rmtree
 AVATAR_IMG = """iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAAABmJLR0QA/wD/AP+gvaeTAAAACXBI
 WXMAAC4jAAAuIwF4pT92AAAAB3RJTUUH4gwfDg4yBhjr5QAAABl0RVh0Q29tbWVudABDcmVhdGVk
 IHdpdGggR0lNUFeBDhcAAACbSURBVHja7dEBDQAACMMwwL/nI4OEdBLWTpLSWWMBAAACAEAAAAgA
@@ -22,11 +24,13 @@ class HipchatGenerator:
         metadata = self.create_metadata()
         users = self.create_users()
         rooms = self.create_rooms(users)
-        room_history = self.create_room_history(rooms, users)
+        room_history, room_files = self.create_room_history(rooms, users)
         for dir in ["./dump", "./dump/rooms", "./dump/users", "./dump/users/files"]:
             try:
                 mkdir(dir)
             except FileExistsError:
+                rmtree(dir)
+                mkdir(dir)
                 pass
             except Exception as ex:
                 raise ex
@@ -41,9 +45,14 @@ class HipchatGenerator:
             fmeta.write(json.dumps(metadata, indent=2))
 
         for id, history in room_history.items():
+            print("Saving history for room #", id)
             r_path = "./dump/rooms/{}".format(id)
             mkdir(r_path)
             mkdir(r_path + "/files")
+            for room_file in room_files[id]:
+                mkdir(r_path + "/files/" + room_file["root"])
+                with open(r_path + "/files/" + room_file["path"], "wb") as ffile:
+                    ffile.write(''.join(random.choices(string.ascii_letters + string.digits, k=room_file["size"])).encode())
             with open(r_path + "/history.json", "w", encoding="utf-8") as fhistory:
                 fhistory.write(json.dumps(history, indent=2))
 
@@ -120,7 +129,9 @@ class HipchatGenerator:
     
     def create_room_history(self, rooms, users):
         history = {}
+        files = {}
         for room in rooms:
+            print("Creating history for room #", room["Room"]["id"])
             members = None
             if len(room["Room"]["members"]) == 0:
                 members = []
@@ -129,13 +140,30 @@ class HipchatGenerator:
             else:
                 members = room["Room"]["members"]
             history[room["Room"]["id"]] = []
+            files[room["Room"]["id"]] = []
             for mi in range(0, random.randint(self.args.min_msgs, self.args.max_msgs)):
+                attachment = None
+                if random.randint(0, 20) == 20:
+                    root = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+                    path = root + "/attachment.bin"
+                    data_size = random.choice([5000, 25000, 100000])
+                    attachment = {
+                        "name": "attachment.bin",
+                        "path": path,
+                        "size": data_size,
+                        "url": "",
+                    }
+                    files[room["Room"]["id"]].append({
+                        "path": path,
+                        "root": root,
+                        "size": data_size,
+                    })
                 history[room["Room"]["id"]].append(
                     {
                         "UserMessage": {
-                            "attachment": None,
-                            "attachment_path": None,
-                            "id": uuid4(),
+                            "attachment": attachment,
+                            "attachment_path": attachment["path"] if attachment is not None else None,
+                            "id": str(uuid4()),
                             "mentions": [],
                             "message": "This is a example message generated to test hipchat migrations!",
                             "sender": {
@@ -152,4 +180,4 @@ class HipchatGenerator:
                         }
                     }
                 )
-        return history
+        return history, files
