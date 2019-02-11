@@ -22,6 +22,10 @@ def main():
                     type=str)
     parser.add_argument("-P", help="N personal messages to create",
                     type=int, default=0)
+    parser.add_argument("--user-prefix", help="prefix for the user names",
+                    type=str, default="dummy_")
+    parser.add_argument("--room-prefix", help="prefix for the room names",
+                    type=str, default="Room numero")
     parser.add_argument("outfile", help="File to output to",
                     type=str)
     args = parser.parse_args()

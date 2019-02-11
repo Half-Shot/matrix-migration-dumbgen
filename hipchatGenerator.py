@@ -17,13 +17,13 @@ class HipchatGenerator:
     def __init__(self, args):
         self.args = args
         pass
-    
+
     def start(self):
         if not self.args.email:
             raise Exception("No email provided for users")
         metadata = self.create_metadata()
-        users = self.create_users()
-        rooms = self.create_rooms(users)
+        users = self.create_users(self.args.user_prefix)
+        rooms = self.create_rooms(users, self.args.room_prefix)
         room_history, room_files = self.create_room_history(rooms, users)
         for dir in ["./dump", "./dump/rooms", "./dump/users", "./dump/users/files"]:
             try:
@@ -58,22 +58,25 @@ class HipchatGenerator:
 
 
 
-    def create_users(self):
+    def create_users(self, prefix):
         users = []
+        have_admin = False
         for uid in range(1, self.args.users+1):
+            account_type = "user" if have_admin else "admin"
+            have_admin = True
             users.append(
                 {
                     "User": {
-                        "account_type": "user",
+                        "account_type": account_type,
                         "avatar": AVATAR_IMG,
                         "created": "",
                         "email": self.args.email,
                         "id": uid,
                         "is_deleted": False,
-                        "mention_name": "dummy_{}".format(uid),
+                        "mention_name": "{}{}".format(prefix, uid),
                         "name": "Mr. Dummy #{}".format(uid),
                         "roles": [
-                            "users"
+                            "user"
                         ],
                         "timezone": "UTC",
                         "title": "" # XXX: Not used?
@@ -82,7 +85,7 @@ class HipchatGenerator:
             )
         return users
 
-    def create_rooms(self, users):
+    def create_rooms(self, users, prefix):
         rooms = []
         for rid in range(1, self.args.rooms+1):
             is_private = random.choice([True, False])
@@ -91,7 +94,7 @@ class HipchatGenerator:
             members = set()
             if is_private:
                 members.add(owner)
-                for nuser in range(random.randint(1, len(users) / 2)):
+                for nuser in range(random.randint(1, len(users) // 2)):
                     members.add(users[random.randint(0, len(users) -1)]["User"]["id"])
             rooms.append(
                   {
@@ -101,7 +104,7 @@ class HipchatGenerator:
                         "id": rid,
                         "is_archived": False,
                         "members": list(members),
-                        "name": "Room numero #{}".format(rid),
+                        "name": "{} #{}".format(prefix, rid),
                         "owner": owner,
                         "participants": [],
                         "privacy": "private" if is_private else "public",
@@ -126,7 +129,7 @@ class HipchatGenerator:
                 "version": "1"
             }
         }
-    
+
     def create_room_history(self, rooms, users):
         history = {}
         files = {}
