@@ -4,6 +4,8 @@ import logging
 import sys
 
 from hipchatGenerator import HipchatGenerator
+from slackGenerator import SlackGenerator
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hipchat", help="select hipchat format",
@@ -35,6 +37,9 @@ def main():
     try:
         if args.hipchat:
             HipchatGenerator(args).start()
+            pass
+        elif args.slack:
+            SlackGenerator(args).start()
             pass
         else:
             logging.critical("No format given, not doing anything")
