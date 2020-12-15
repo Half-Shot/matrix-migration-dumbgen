@@ -1,6 +1,9 @@
 import json
 import string
 import random
+import requests 
+from faker import Faker
+from zipfile import ZipFile
 from uuid import uuid4
 from time import time
 from os import mkdir
@@ -13,70 +16,59 @@ AEAAAAgAAAEAIAAABACAAAAAIAAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAjA
 hxYN1AS8uZ5NRAAAAABJRU5ErkJggg==
 """
 
+room_names = [
+    "general",
+    "business",
+    "slack",
+    "matrix",
+    "breakout",
+    "movingon",
+    "marketing",
+    "design",
+    "engineering"
+]
+
 class SlackGenerator:
     def __init__(self, args):
         self.args = args
+        if not self.args.email:
+            raise Exception("No email provided for users")
         pass
 
     def start(self):
-        if not self.args.email:
-            raise Exception("No email provided for users")
-        users = self.create_users(self.args.user_prefix)
-        rooms = self.create_rooms(users, self.args.room_prefix)
-        room_history, room_files = self.create_room_history(rooms, users)
-        try:
-            mkdir("./dump")
-        except FileExistsError:
-            rmtree("./dump")
-            mkdir("./dump")
-            pass
-        except Exception as ex:
-            raise ex
-
-        for dir in rooms:
-
-        # Write to files
-        with open("./dump/users.json", "w", encoding="utf-8") as fuser:
-            fuser.write(json.dumps(users, indent=2))
-
-        with open("./dump/channels.json", "w", encoding="utf-8") as froom:
-            froom.write(json.dumps(rooms, indent=2))
-
-        for id, history in room_history.items():
-            print("Saving history for room #", id)
-            r_path = "./dump/rooms/{}".format(id)
-            mkdir(r_path)
-            mkdir(r_path + "/files")
-            for room_file in room_files[id]:
-                mkdir(r_path + "/files/" + room_file["root"])
-                with open(r_path + "/files/" + room_file["path"], "wb") as ffile:
-                    ffile.write(''.join(random.choices(string.ascii_letters + string.digits, k=room_file["size"])).encode())
-            with open(r_path + "/history.json", "w", encoding="utf-8") as fhistory:
-                fhistory.write(json.dumps(history, indent=2))
-
+        with ZipFile(self.args.outfile, 'w') as zip:
+            users = self.create_users(self.args.user_prefix)
+            zip.writestr("users.json", json.dumps(users, indent=2))
+            rooms = self.create_rooms(users, self.args.room_prefix)
+            zip.writestr("channels.json", json.dumps(rooms, indent=2))
+            room_history = self.create_room_history(rooms, users)
+            for id, history in room_history.items():
+                zip.writestr(f'{id}/1-1-1.json', json.dumps(history, indent=2))
 
 
     def create_users(self, prefix):
         users = []
-        have_admin = False
+        fk = Faker()
         for uid in range(1, self.args.users+1):
-            account_type = "user" if have_admin else "admin"
-            have_admin = True
+            req = requests.get('https://dog.ceo/api/breeds/image/random')
+            avatar = req.json()['message']
+            name = fk.name()
+            username = name.split(' ')[0]
             users.append(
                 {
-                    "id": uid,
-                    "name": "dummy",
-                    "is_admin": have_admin,
-                    "deleted": false,
-                    "created": "",
-                    "email": self.args.email,
-                    "is_deleted": False,
-                    "mention_name": "{}{}".format(prefix, uid),
-                    "name": "Mr. Dummy #{}".format(uid),
-                    "roles": [
-                        "user"
-                    ],
-                    "timezone": "UTC",
+                    "id": "U" + str(uid),
+                    "name": username.lower(),
+                    "real_name": username,
+                    "is_admin": uid == 1,
+                    "is_owner": uid == 1,
+		            "is_bot": False,
+                    "deleted": False,
+                    "updated": 1603871635,
+                    "profile": {
+			            "display_name": name,
+                        "email": self.args.email,
+                        "image_original": avatar,
+                    },
                     "title": "" # XXX: Not used?
                 }
             )
@@ -85,28 +77,27 @@ class SlackGenerator:
     def create_rooms(self, users, prefix):
         rooms = []
         for rid in range(1, self.args.rooms+1):
-            is_private = random.choice([True, False])
             owner = random.choice(users)
-            owner = owner["User"]["id"]
+            owner = owner["id"]
             members = set()
-            if is_private:
-                members.add(owner)
-                for nuser in range(random.randint(1, len(users) // 2)):
-                    members.add(users[random.randint(0, len(users) -1)]["User"]["id"])
+            members.add(owner)
+            name = random.choice(room_names) + str(rid)
+            for _nuser in range(random.randint(1, len(users) // 2)):
+                members.add(users[random.randint(0, len(users) -1)]["id"])
             rooms.append(
                 {
                     "created": 1537798089,
-                    "id": rid,
+                    "id": "C" + str(rid),
                     "is_archived": False,
                     "is_general": False,
                     "members": list(members),
-                    "name": "{} #{}".format(prefix, rid),
+                    "name": name,
                     "creator": owner,
                     "topic": {
                         "creator": owner,
                         "value": "Toooooooooopic!",
                         "last_set": 1537798089,
-                    }
+                    },
                     "purpose": {
                         "creator": owner,
                         "value": "A purpose!",
@@ -118,55 +109,47 @@ class SlackGenerator:
 
     def create_room_history(self, rooms, users):
         history = {}
-        files = {}
+        fk = Faker()
         for room in rooms:
-            print("Creating history for room #", room["Room"]["id"])
-            members = None
-            if len(room["Room"]["members"]) == 0:
-                members = []
-                for u in users:
-                    members.append(u["User"]["id"])
-            else:
-                members = room["Room"]["members"]
-            history[room["Room"]["id"]] = []
-            files[room["Room"]["id"]] = []
+            print("Creating history for room #", room["id"])
+            members = room["members"]
+            history[room["id"]] = []
+            msgtime = 1600000000
             for mi in range(0, random.randint(self.args.min_msgs, self.args.max_msgs)):
-                attachment = None
-                if random.randint(0, 20) == 20:
-                    root = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
-                    path = root + "/attachment.bin"
-                    data_size = random.choice([5000, 25000, 100000])
-                    attachment = {
-                        "name": "attachment.bin",
-                        "path": path,
-                        "size": data_size,
-                        "url": "",
-                    }
-                    files[room["Room"]["id"]].append({
-                        "path": path,
-                        "root": root,
-                        "size": data_size,
-                    })
-                history[room["Room"]["id"]].append(
-                    {
-                        "UserMessage": {
-                            "attachment": attachment,
-                            "attachment_path": attachment["path"] if attachment is not None else None,
-                            "id": str(uuid4()),
-                            "mentions": [],
-                            "message": "This is a example message generated to test hipchat migrations!",
-                            "sender": {
-                                "id": random.choice(members),
-                                "links": {
-                                    "self": "https://api.hipchat.com/v2/user/2189579".format(random.choice(members))
-                                },
-                                "mention_name": "dummy_?",
-                                "name": "Dummy #?",
-                                "version": "00000000"
-                            },
-                            "timestamp": "2015-05-22T16:29:35Z 107493",
-                            "type": "user",
-                        }
-                    }
-                )
-        return history, files
+                sender = random.choice(members)
+                msgtime = msgtime + random.random() * 300000
+                history[room["id"]].append({
+                    "type": "message",
+                    "text": fk.text(),
+                    "user": sender,
+                    "ts": msgtime,
+                })
+                # attachment = None
+                # if random.randint(0, 20) == 20:
+                #     root = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+                #     path = root + "/attachment.bin"
+                #     data_size = random.choice([5000, 25000, 100000])
+                #     attachment = {
+                #         "name": "attachment.bin",
+                #         "path": path,
+                #         "size": data_size,
+                #         "url": "",
+                #     }
+                # history[room["id"]].append(
+                #     {
+                #         "attachment": attachment,
+                #         "attachment_path": attachment["path"] if attachment is not None else None,
+                #         "id": str(uuid4()),
+                #         "mentions": [],
+                #         "message": fk.text(),
+                #         "sender": {
+                #             "id": random.choice(members),
+                #             "mention_name": "dummy_?",
+                #             "name": "Dummy #?",
+                #             "version": "00000000"
+                #         },
+                #         "timestamp": "2015-05-22T16:29:35Z 107493",
+                #         "type": "user",
+                #     }
+                # )
+        return history

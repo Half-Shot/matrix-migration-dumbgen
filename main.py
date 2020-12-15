@@ -8,7 +8,9 @@ from slackGenerator import SlackGenerator
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hipchat", help="select hipchat format",
+    parser.add_argument("--hipchat", help="hipchat format",
+                    action="store_true")
+    parser.add_argument("--slack", help="slack format",
                     action="store_true")
     parser.add_argument("-p", "--pass", help="Passphrase (omit if not encrypting)",
                     type=str)
@@ -20,7 +22,7 @@ def main():
                     type=int, default=200)
     parser.add_argument("--max-msgs", help="Maximum number of messages to be created in a room",
                     type=int, default=500)
-    parser.add_argument("--email", help="E-mail address of the dummy users",
+    parser.add_argument("--email", help="E-mail doamin of the dummy users",
                     type=str)
     parser.add_argument("-P", help="N personal messages to create",
                     type=int, default=0)
